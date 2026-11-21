@@ -1,0 +1,13 @@
+{
+  "name": "subagent-statusline",
+  "owner": {
+    "name": "caolib"
+  },
+  "description": "Claude Code 子代理状态行 Mod：以原生 AgentRow 显示名称、模型、耗时、token、状态与当前工具动作。",
+  "plugins": [
+    {
+      "name": "subagent-statusline",
+      "source": "./"
+    }
+  ]
+}

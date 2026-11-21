@@ -2,6 +2,24 @@
 
 需要 Claude Code 2.1.326 或更新版本；开发接口按 2.1.327 验证。
 
+## 安装
+
+在 Claude Code 终端会话中执行：
+
+```text
+/plugin install subagent-statusline --marketplace caolib/subagent-statusline
+```
+
+从 shell：
+
+```sh
+claude plugin install subagent-statusline --marketplace caolib/subagent-statusline
+```
+
+桌面应用：点击输入框旁的 `+` → Plugins → Add marketplace，输入 `caolib/subagent-statusline`，再 Add plugin。
+
+安装后在该会话立即生效，无需重启；user scope 下之后的新会话自动加载。
+
 参考原 `subagent-statusline.js`，保留配色、双空格分隔及顺序：
 
 ```text

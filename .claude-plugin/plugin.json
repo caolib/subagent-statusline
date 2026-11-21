@@ -2,5 +2,10 @@
   "name": "subagent-statusline",
   "version": "0.1.0",
   "description": "保留现有子代理状态行配色与布局，使用 AgentRow Mod 原生渲染。",
+  "author": {
+    "name": "caolib"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/caolib/subagent-statusline",
   "types": "./types/index.d.ts"
 }
