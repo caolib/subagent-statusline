@@ -9,7 +9,7 @@ const activity = atom(
   { shape: 'activity-1' },
 );
 const C = {
-  name: '\x1b[1;36m', label: '\x1b[97m', desc: '\x1b[35m',
+  name: '\x1b[1;36m', label: '\x1b[97m', desc: '\x1b[39m',
   model: '\x1b[34m', time: '\x1b[96m', dim: '\x1b[2m',
   done: '\x1b[32m', failed: '\x1b[31m', pending: '\x1b[33m',
   reset: '\x1b[0m',
@@ -17,14 +17,29 @@ const C = {
 
 type AgentRow = RenderPropsOf['AgentRow'];
 
-function clean(value: unknown, max: number): string {
-  const text = String(value ?? '')
+// 子代理类型简称，按完整名称匹配，不区分大小写。
+const AGENT_SHORT: Record<string, string> = { 'general-purpose': 'general' };
+
+function shortName(raw: unknown, max: number): string {
+  const text = sanitize(raw);
+  return clip(AGENT_SHORT[text.toLowerCase()] ?? text, max);
+}
+
+function sanitize(value: unknown): string {
+  return String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
     .trim();
+}
+
+function clip(text: string, max: number): string {
   const chars = Array.from(text);
   return chars.length > max ? chars.slice(0, max - 1).join('') + '…' : text;
+}
+
+function clean(value: unknown, max: number): string {
+  return clip(sanitize(value), max);
 }
 
 function fmtTokens(n: number): string {
@@ -43,9 +58,34 @@ function fmtDuration(ms: number): string {
     .filter(Boolean).join(' ');
 }
 
+// 常见模型家族的简称，按词首匹配；加入新条目即可扩展。
+const MODEL_SHORT: Record<string, string> = { deepseek: 'ds', flash: 'f' };
+
+// 模型家族配色：Claude 品牌橙 #d97757，GPT 用状态栏的绿色；未命中的用白色。
+const MODEL_COLORS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/claude|anthropic|sonnet|opus|haiku|fable/, '\x1b[38;2;217;119;87m'],
+  [/deepseek|\bds\b/, C.model],
+  [/gpt|openai/, '\x1b[32m'],
+];
+const DEFAULT_MODEL_COLOR = '\x1b[97m';
+
+function modelColor(raw: string | undefined): string {
+  const name = (raw ?? '').toLowerCase();
+  for (const [pattern, color] of MODEL_COLORS) {
+    if (pattern.test(name)) return color;
+  }
+  return DEFAULT_MODEL_COLOR;
+}
+
+function abbreviateModel(name: string): string {
+  return name.replace(/(^|[-_.\/:])([a-z]+)/gi, (whole, sep: string, word: string) =>
+    MODEL_SHORT[word.toLowerCase()] ? sep + MODEL_SHORT[word.toLowerCase()] : whole);
+}
+
 function shortModel(raw: string | undefined, max: number): string {
-  const model = clean((raw ?? '').replace(/\[1m\]/gi, ''), max);
-  return model.split('/').filter(Boolean).pop() ?? '';
+  const model = (raw ?? '').replace(/\[1m\]/gi, '');
+  const base = model.split('/').filter(Boolean).pop() ?? '';
+  return clean(abbreviateModel(base), max);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -132,13 +172,13 @@ export function renderLine(agent: AgentRow, now: number, current?: AgentActivity
   const used = () => visibleLen(parts.join('  '));
   const room = () => (budget ? budget - used() - 2 : Number.POSITIVE_INFINITY);
 
-  const name = clean(agent.name ?? agent.type ?? agent.description, limits.name);
+  const name = shortName(agent.name ?? agent.type ?? agent.description, limits.name);
   if (name) parts.push(C.name + name + C.reset);
 
   const model = shortModel(agent.model, limits.model);
   // 原字段缺失时，使用引擎报告的最近一次请求 effort，不猜测继承值。
   const effort = clean(agent.effort ?? agent.lastRequest?.effort, 12);
-  if (model) parts.push(C.model + model + (effort ? '(' + effort + ')' : '') + C.reset);
+  if (model) parts.push(modelColor(agent.model) + model + (effort ? '(' + effort + ')' : '') + C.reset);
 
   const duration = fmtDuration(Math.max(0, now - agent.startTime));
   if (duration) parts.push(C.time + duration + C.reset);

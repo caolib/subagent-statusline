@@ -19,7 +19,7 @@ test('保留名称、模型、时间、token、任务描述的顺序和配色', 
     'Explore  claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取状态栏脚本',
   );
   expect(line.startsWith('\x1b[1;36mExplore\x1b[0m')).toBe(true);
-  expect(line.includes('\x1b[34mclaude-sonnet-5-5(medium)\x1b[0m')).toBe(true);
+  expect(line.includes('\x1b[38;2;217;119;87mclaude-sonnet-5-5(medium)\x1b[0m')).toBe(true);
 });
 
 test('token 静止与压缩下降显示上箭头', async () => {
@@ -49,6 +49,23 @@ test('行末显示当前工具动作，非运行状态不显示', async () => {
   expect(plain(renderLine(BASE, NOW)).includes('Read hooks')).toBe(false);
 });
 
+test('模型家族使用简称，如 deepseek→ds、flash→f，并去掉 [1m] 与路径前缀', async () => {
+  const line = plain(renderLine({
+    ...BASE, model: 'group/DeepSeek-v4.1-flash-1017[1m]', effort: 'xhigh',
+  }, NOW));
+  expect(line.includes('ds-v4.1-f-1017(xhigh)')).toBe(true);
+});
+
+test('按模型家族着色：claude 品牌橙、deepseek 蓝、gpt 绿，未知用白色', async () => {
+  const colorOf = (model: string) =>
+    /(\x1b\[[0-9;]+m)(?:claude|ds-|gpt|qwen)/.exec(renderLine({ ...BASE, model }, NOW))?.[1];
+  expect(colorOf('gateway/claude-sonnet-5-5')).toBe('\x1b[38;2;217;119;87m');
+  expect(colorOf('gateway/deepseek-v4.1')).toBe('\x1b[34m');
+  expect(colorOf('group/ds-v4.1-flash-1017[1m]')).toBe('\x1b[34m');
+  expect(colorOf('openai/gpt-5')).toBe('\x1b[32m');
+  expect(colorOf('local/qwen-3')).toBe('\x1b[97m');
+});
+
 test('尚未请求时不显示零 token、未知模型或未知 effort', async () => {
   const line = plain(renderLine({
     ...BASE, model: undefined, effort: undefined, tokenCount: 0, startTime: NOW,
@@ -71,6 +88,12 @@ test('完成、失败、停止和等待不误显示为运行中', async () => {
   ] as const) {
     expect(plain(renderLine({ ...BASE, status }, NOW)).includes('  ' + label + '  ')).toBe(true);
   }
+});
+
+test('子代理类型使用简称，如 general-purpose→general', async () => {
+  const line = plain(renderLine({ ...BASE, name: undefined, type: 'general-purpose' }, NOW));
+  expect(line.startsWith('general  ')).toBe(true);
+  expect(line.includes('general-purpose')).toBe(false);
 });
 
 test('任务描述相同时不重复显示，名字优先于类型', async () => {
