@@ -16,10 +16,10 @@ const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, '');
 test('保留名称、模型、时间、token、任务描述的顺序和配色', async () => {
   const line = renderLine(BASE, NOW);
   expect(plain(line)).toBe(
-    'Explore  claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取状态栏脚本',
+    'Explore  ✻ claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取状态栏脚本',
   );
   expect(line.startsWith('\x1b[1;36mExplore\x1b[0m')).toBe(true);
-  expect(line.includes('\x1b[38;2;217;119;87mclaude-sonnet-5-5(medium)\x1b[0m')).toBe(true);
+  expect(line.includes('\x1b[38;2;217;119;87m✻ claude-sonnet-5-5(medium)\x1b[0m')).toBe(true);
 });
 
 test('token 静止与压缩下降显示上箭头', async () => {
@@ -42,28 +42,71 @@ test('按 columns 收窄字段，总宽不超过列宽', async () => {
 test('行末显示当前工具动作，非运行状态不显示', async () => {
   const act = { tool: 'Read', target: 'hooks/register.ts', at: NOW };
   expect(plain(renderLine(BASE, NOW, act))).toBe(
-    'Explore  claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取状态栏脚本  Read hooks/register.ts',
+    'Explore  ✻ claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取状态栏脚本  Read hooks/register.ts',
   );
   expect(renderLine(BASE, NOW, act).endsWith('Read hooks/register.ts')).toBe(true);
   expect(plain(renderLine({ ...BASE, status: 'completed' }, NOW, act)).includes('Read hooks')).toBe(false);
   expect(plain(renderLine(BASE, NOW)).includes('Read hooks')).toBe(false);
 });
 
-test('模型家族使用简称，如 deepseek→ds、flash→f，并去掉 [1m] 与路径前缀', async () => {
+test('去掉 [1m] 与路径前缀，保留完整模型名', async () => {
   const line = plain(renderLine({
     ...BASE, model: 'group/DeepSeek-v4.1-flash-1017[1m]', effort: 'xhigh',
   }, NOW));
-  expect(line.includes('ds-v4.1-f-1017(xhigh)')).toBe(true);
+  expect(line.includes('DeepSeek-v4.1-flash-1017(xhigh)')).toBe(true);
+});
+
+test('网关 id 补充可读 label', async () => {
+  expect(plain(renderLine({ ...BASE, model: 'group/ds-v4.1-flash-1017[1m]', effort: 'high' }, NOW))
+    .includes('DeepSeek 4.1 Flash(high)')).toBe(true);
+  expect(plain(renderLine({ ...BASE, model: 'auto/deepseek-v4.1-flash[1m]' }, NOW))
+    .includes('DeepSeek 4.1 Flash(medium)')).toBe(true);
+  expect(plain(renderLine({ ...BASE, model: 'group/gpt-6-astra', effort: 'xhigh' }, NOW))
+    .includes('GPT 6.2 Astra(xhigh)')).toBe(true);
+  expect(plain(renderLine({ ...BASE, model: 'group/gemini-4-carbon[1m]' }, NOW))
+    .includes('✦ Gemini 4 Carbon(medium)')).toBe(true);
+  expect(plain(renderLine({ ...BASE, model: 'group/claude-fable-5-2[1m]' }, NOW))
+    .includes('✻ Fable 5.2(medium)')).toBe(true);
+});
+
+test('带空格的显示名保持原样，两个 DS 档位可区分', async () => {
+  const sonnet = renderLine({ ...BASE, model: 'DS 4.1 Flash', effort: 'xhigh' }, NOW);
+  expect(plain(sonnet).includes('DS 4.1 Flash(xhigh)')).toBe(true);
+  expect(sonnet.includes('\x1b[34mDS 4.1 Flash(xhigh)\x1b[0m')).toBe(true);
+  const haiku = plain(renderLine({ ...BASE, model: 'DS 4.1 flash' }, NOW));
+  expect(haiku.includes('DS 4.1 flash(medium)')).toBe(true);
+  expect(plain(renderLine({ ...BASE, model: 'Gemini 4 Neon' }, NOW)).includes('✦ Gemini 4 Neon')).toBe(true);
 });
 
 test('按模型家族着色：claude 品牌橙、deepseek 蓝、gpt 绿，未知用白色', async () => {
   const colorOf = (model: string) =>
-    /(\x1b\[[0-9;]+m)(?:claude|ds-|gpt|qwen)/.exec(renderLine({ ...BASE, model }, NOW))?.[1];
+    /(\x1b\[[0-9;]+m)(?:✻ )?(?:claude|gpt|qwen)/.exec(renderLine({ ...BASE, model }, NOW))?.[1];
   expect(colorOf('gateway/claude-sonnet-5-5')).toBe('\x1b[38;2;217;119;87m');
-  expect(colorOf('gateway/deepseek-v4.1')).toBe('\x1b[34m');
-  expect(colorOf('group/ds-v4.1-flash-1017[1m]')).toBe('\x1b[34m');
+  expect(renderLine({ ...BASE, model: 'gateway/deepseek-v4.1' }, NOW).includes('\x1b[34mdeepseek-v4.1')).toBe(true);
+  expect(renderLine({ ...BASE, model: 'group/ds-v4.1-flash-1017[1m]' }, NOW).includes('\x1b[34mDeepSeek 4.1 Flash')).toBe(true);
   expect(colorOf('openai/gpt-5')).toBe('\x1b[32m');
   expect(colorOf('local/qwen-3')).toBe('\x1b[97m');
+});
+
+test('gemini 模型：星形、名称与 effort 连成一段蓝绿渐变', async () => {
+  const line = renderLine({ ...BASE, model: 'group/gemini-3-pro[1m]', effort: 'high' }, NOW);
+  const text = '✦ gemini-3-pro(high)';
+  const codes = [...line.matchAll(/\x1b\[38;2;(\d+;\d+;\d+)m/g)].map((m) => m[1]);
+  expect(codes.length).toBe(Array.from(text).length);
+  expect(codes[0]).toBe('50;135;254');
+  expect(codes[codes.length - 1]).toBe('22;186;103');
+  expect(line.includes('\x1b[2m')).toBe(false);
+  expect(plain(line).includes(text)).toBe(true);
+});
+
+test('gemini 渐变适配空格与不同型号，其他家族不误用', async () => {
+  const spaced = renderLine({ ...BASE, model: 'Gemini 3 Pro', effort: undefined }, NOW);
+  expect(plain(spaced).includes('✦ Gemini 3 Pro')).toBe(true);
+  expect([...spaced.matchAll(/\x1b\[38;2;/g)].length).toBe(Array.from('✦ Gemini 3 Pro').length);
+  expect(plain(renderLine({ ...BASE, model: 'gemini-3-flash-preview' }, NOW)).includes('✦ gemini-3-flash-preview')).toBe(true);
+  const gpt = renderLine({ ...BASE, model: 'openai/gpt-5' }, NOW);
+  expect(gpt.includes('\x1b[38;2;50;135;254m')).toBe(false);
+  expect(gpt.includes('✦')).toBe(false);
 });
 
 test('尚未请求时不显示零 token、未知模型或未知 effort', async () => {

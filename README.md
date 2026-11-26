@@ -35,6 +35,8 @@ Explore  claude-sonnet-5-5(medium)  2m 5s  ↓ 85.5k  检查渲染逻辑  读取
 - 不修改主状态栏 `statusline.js`，也不修改或删除旧 `subagentStatusLine` 配置。
 - 旧命令仍配置时可能继续执行，本 Mod 覆盖它传入的 body；确认效果后再移除旧配置。
 - 行末以正常前景色显示子代理当前工具动作，如 `Read hooks/register.ts`：由 `tool.call` 的 `agentId` 记录到 `$.state`，仅运行中显示。
+- 模型名按家族着色：Claude 橙（`✻` 前缀）、DeepSeek 蓝、GPT 绿；Gemini 的 `✦` 星形、模型名与 effort 连成一段逐字符双色渐变（#3287FE 蓝 → #16BA67 绿）。浅色终端可把 `hooks/register.ts` 的 `GEMINI_THEME` 改为 `'light'` 切换为高对比配色。
+- 网关模型 id 没有可读显示名，按 `MODEL_LABELS` 映射为 modelPicker 中的名字（如 `ds-v4.1-flash-1017 → DS 4.1 Flash`）；新增模型时补一条即可。
 - 不显示上下文占用百分比。
 - 按引擎给出的 `columns` 收窄各字段，总宽不超出；窄行（<100 列）只保留进度摘要，不显示任务描述。
 - 不显示费用或缓存指标。

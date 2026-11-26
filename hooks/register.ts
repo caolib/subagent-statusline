@@ -58,8 +58,24 @@ function fmtDuration(ms: number): string {
     .filter(Boolean).join(' ');
 }
 
-// 常见模型家族的简称，按词首匹配；加入新条目即可扩展。
-const MODEL_SHORT: Record<string, string> = { deepseek: 'ds', flash: 'f' };
+// 直接写入的网关 id 没有显示名，这里按路径补上 modelPicker 里的可读 label。
+const MODEL_LABELS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(^|\/)auto\/deepseek-v4\.1-flash/i, 'DeepSeek 4.1 Flash'],
+  [/\/ds-v4\.1-flash-1017/i, 'DeepSeek 4.1 Flash'],
+  [/\/gpt-6\.2-astra|\/gpt-6-astra/i, 'GPT 6.2 Astra'],
+  [/\/gpt-6\.2-sol/i, 'GPT 6.2 Sol'],
+  [/\/gpt-6\.1-sol/i, 'GPT 6.1 Sol'],
+  [/\/gemini-4-neon/i, 'Gemini 4 Neon'],
+  [/\/gemini-4-carbon/i, 'Gemini 4 Carbon'],
+  [/\/claude-fable-5-2/i, 'Fable 5.2'],
+];
+
+function modelLabel(text: string): string {
+  for (const [pattern, label] of MODEL_LABELS) {
+    if (pattern.test(text)) return label;
+  }
+  return '';
+}
 
 // 模型家族配色：Claude 品牌橙 #d97757，GPT 用状态栏的绿色；未命中的用白色。
 const MODEL_COLORS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -69,6 +85,52 @@ const MODEL_COLORS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 const DEFAULT_MODEL_COLOR = '\x1b[97m';
 
+// Gemini 双色：深色终端用品牌值，浅色终端用高对比替代值。
+type Rgb = readonly [number, number, number];
+const GEMINI_DARK: readonly Rgb[] = [[0x32, 0x87, 0xfe], [0x16, 0xba, 0x67]];
+const GEMINI_LIGHT: readonly Rgb[] = [[0x18, 0x5a, 0xbc], [0x13, 0x73, 0x33]];
+const GEMINI_THEME: 'dark' | 'light' = 'dark';
+const GEMINI_STOPS: readonly Rgb[] = GEMINI_THEME === 'dark' ? GEMINI_DARK : GEMINI_LIGHT;
+const GEMINI_MODEL = /gemini|google/i;
+// Claude Code 自身用的星芒字符，作为 Claude 家族前缀。
+const CLAUDE_MODEL = /claude|anthropic|sonnet|opus|haiku|fable/i;
+
+function fg(channels: readonly number[]): string {
+  return `\x1b[38;2;${channels[0]};${channels[1]};${channels[2]}m`;
+}
+
+function mix(a: Rgb, b: Rgb, f: number): Rgb {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f),
+  ];
+}
+
+// 逐字符在双色间插值，渐变跨度随文字长度自适应。
+function gradient(text: string): string {
+  const chars = Array.from(text);
+  const segs = GEMINI_STOPS.length - 1;
+  return chars.map((ch, i) => {
+    const t = chars.length > 1 ? (i / (chars.length - 1)) * segs : 0;
+    const k = Math.min(Math.floor(t), segs - 1);
+    const f = t - k;
+    return fg(mix(GEMINI_STOPS[k]!, GEMINI_STOPS[k + 1]!, f)) + ch;
+  }).join('') + C.reset;
+}
+
+// 星形、模型名与 effort 连成一段完整的蓝绿渐变。
+function geminiStyle(text: string, effort: string): string {
+  return gradient('✦ ' + text + (effort ? '(' + effort + ')' : ''));
+}
+
+// Gemini 的名字可能变化，只按家族词上色；其他家族保持单色前缀。
+function modelText(raw: string | undefined, model: string, effort: string): string {
+  if (GEMINI_MODEL.test(raw ?? '')) return geminiStyle(model, effort);
+  const icon = CLAUDE_MODEL.test(raw ?? '') ? '✻ ' : '';
+  return modelColor(raw) + icon + model + (effort ? '(' + effort + ')' : '') + C.reset;
+}
+
 function modelColor(raw: string | undefined): string {
   const name = (raw ?? '').toLowerCase();
   for (const [pattern, color] of MODEL_COLORS) {
@@ -77,15 +139,9 @@ function modelColor(raw: string | undefined): string {
   return DEFAULT_MODEL_COLOR;
 }
 
-function abbreviateModel(name: string): string {
-  return name.replace(/(^|[-_.\/:])([a-z]+)/gi, (whole, sep: string, word: string) =>
-    MODEL_SHORT[word.toLowerCase()] ? sep + MODEL_SHORT[word.toLowerCase()] : whole);
-}
-
 function shortModel(raw: string | undefined, max: number): string {
-  const model = (raw ?? '').replace(/\[1m\]/gi, '');
-  const base = model.split('/').filter(Boolean).pop() ?? '';
-  return clean(abbreviateModel(base), max);
+  const base = (raw ?? '').replace(/\[1m\]/gi, '').split('/').filter(Boolean).pop() ?? '';
+  return clean(modelLabel(raw ?? '') || base, max);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -178,7 +234,7 @@ export function renderLine(agent: AgentRow, now: number, current?: AgentActivity
   const model = shortModel(agent.model, limits.model);
   // 原字段缺失时，使用引擎报告的最近一次请求 effort，不猜测继承值。
   const effort = clean(agent.effort ?? agent.lastRequest?.effort, 12);
-  if (model) parts.push(modelColor(agent.model) + model + (effort ? '(' + effort + ')' : '') + C.reset);
+  if (model) parts.push(modelText(agent.model, model, effort));
 
   const duration = fmtDuration(Math.max(0, now - agent.startTime));
   if (duration) parts.push(C.time + duration + C.reset);
